@@ -1,0 +1,539 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>SME Kernel Trace</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: instrument panel — source and operands up top, accumulator and result below. */
+:root{
+  --bg:#F1F4F3; --surface:#FFFFFF; --sunken:#E6EBE9; --line:#D2D9D7;
+  --fg:#131A19; --muted:#5A6765; --faint:#8D9896;
+  --za:#B2560D; --za-soft:#F7E8D8;
+  --opa:#2A6A91; --opa-soft:#DEEAF1;
+  --opb:#55762F; --opb-soft:#E4EDD9;
+  --t2:#7A5195; --t2-soft:#EBE3F2;
+  --t3:#9E4457; --t3-soft:#F6E1E5;
+  --off:#B6BFBD;
+  --fs-display:'IBM Plex Sans',system-ui,sans-serif;
+  --fs-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1312; --surface:#161D1C; --sunken:#111817; --line:#2A3331;
+  --fg:#E5EBE9; --muted:#95A2A0; --faint:#6D7A78;
+  --za:#E99B4F; --za-soft:#33240F;
+  --opa:#72A9CB; --opa-soft:#132530;
+  --opb:#A0C077; --opb-soft:#1B2512;
+  --t2:#B295CC; --t2-soft:#241B2E;
+  --t3:#D4818F; --t3-soft:#2E1A1E;
+  --off:#495452; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0E1312; --surface:#161D1C; --sunken:#111817; --line:#2A3331;
+  --fg:#E5EBE9; --muted:#95A2A0; --faint:#6D7A78;
+  --za:#E99B4F; --za-soft:#33240F;
+  --opa:#72A9CB; --opa-soft:#132530;
+  --opb:#A0C077; --opb-soft:#1B2512;
+  --t2:#B295CC; --t2-soft:#241B2E;
+  --t3:#D4818F; --t3-soft:#2E1A1E;
+  --off:#495452; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--fs-display);margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:26px 40px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:clamp(23px,4.4vw,31px);font-weight:600;margin:0;letter-spacing:-.015em;text-wrap:balance}
+h2{font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:15px;margin:6px 0 0;max-width:70ch}
+.eyebrow{font-family:var(--fs-mono);font-size:11.5px;font-weight:600;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--za);margin:0 0 7px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;min-width:0}
+.ptitle{font-family:var(--fs-mono);font-size:11.5px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+.cols{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:880px){.cols{grid-template-columns:1fr}}
+
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--surface);
+  border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font-family:var(--fs-display);font-size:14px;font-weight:500;color:var(--fg);background:var(--sunken);
+  border:1px solid var(--line);border-radius:7px;padding:7px 13px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--za);color:var(--za)}
+button:disabled{opacity:.42;cursor:default}
+button.primary{background:var(--za);border-color:var(--za);color:#fff}
+button.primary:hover{color:#fff;filter:brightness(1.08)}
+button.sel{background:var(--za);border-color:var(--za);color:#fff}
+:focus-visible{outline:2px solid var(--za);outline-offset:2px}
+input[type=range]{flex:1;min-width:120px;accent-color:var(--za)}
+.count{font-family:var(--fs-mono);font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.note{font-size:14.5px;color:var(--fg);margin:0;min-height:2.9em}
+.note b{color:var(--za)}
+code,.mono{font-family:var(--fs-mono)}
+.note code{font-size:13px;background:var(--sunken);padding:1px 5px;border-radius:4px}
+
+/* stage pills */
+.stages{display:flex;gap:5px;flex-wrap:wrap}
+.stage{font-family:var(--fs-mono);font-size:11px;padding:3px 9px;border-radius:20px;
+  border:1px solid var(--line);color:var(--faint);background:var(--sunken)}
+.stage.on{background:var(--za);border-color:var(--za);color:#fff}
+
+pre{font-family:var(--fs-mono);font-size:12.5px;line-height:1.7;margin:0;overflow-x:auto;
+  background:var(--sunken);border-radius:8px;padding:12px 4px}
+.ln{display:block;padding:0 12px;white-space:pre;border-left:2px solid transparent}
+.ln.on{background:var(--za-soft);border-left-color:var(--za)}
+.cm{color:var(--faint)}.kw{color:var(--opa)}.fn{color:var(--za)}
+
+.grid{display:grid;gap:2px;font-family:var(--fs-mono);font-variant-numeric:tabular-nums}
+.cell{background:var(--sunken);border-radius:3px;display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:var(--faint);aspect-ratio:1;min-width:0}
+.cell.done{background:var(--surface);border:1px solid var(--line);color:var(--fg)}
+.cell.inpatch{outline:1.5px solid var(--za);outline-offset:-1.5px}
+.cell.just{background:var(--za);color:#fff;border-color:var(--za)}
+.cell.masked{background:transparent;border:1px dashed var(--off);color:var(--off)}
+.cell.blk{background:var(--sunken);color:var(--muted)}
+.cell.hotA{background:var(--opa);color:#fff}
+.cell.hotB{background:var(--opb);color:#fff}
+.scroll{overflow-x:auto}
+.cgrid{grid-template-columns:repeat(9,minmax(27px,1fr));min-width:268px}
+.agrid{grid-template-columns:repeat(3,28px)}
+.bgrid{grid-template-columns:repeat(9,28px)}
+.ops{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.opblk{display:flex;flex-direction:column;gap:7px}
+.oplbl{font-family:var(--fs-mono);font-size:11.5px;color:var(--muted)}
+.oplbl b{color:var(--fg)}
+.arrow{font-size:19px;color:var(--za);align-self:center;padding-top:22px}
+
+.za-wrap{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.za-tile{border:1px solid var(--line);border-radius:7px;padding:8px;background:var(--sunken)}
+.za-tile.active{border-color:var(--za);background:var(--za-soft)}
+.za-tile h4{font-family:var(--fs-mono);font-size:11px;margin:0 0 6px;color:var(--muted);font-weight:600}
+.za-tile.active h4{color:var(--za)}
+.za-grid{grid-template-columns:repeat(4,1fr)}
+.za-grid .cell{font-size:10.5px}
+.za-tile.idle .cell{background:transparent;border:1px dashed var(--line);color:transparent}
+.za-tile.idle::after{content:"unused by this kernel";display:block;font-family:var(--fs-mono);
+  font-size:9.5px;color:var(--faint);text-align:center;margin-top:5px}
+
+.reg{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+.reg-name{font-family:var(--fs-mono);font-size:12px;font-weight:600;width:92px;flex-shrink:0}
+.lanes{display:flex;gap:3px}
+.lane{font-family:var(--fs-mono);font-size:11.5px;width:33px;height:28px;border-radius:4px;
+  display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.lane.a{background:var(--opa-soft);color:var(--opa);border:1px solid var(--opa)}
+.lane.b{background:var(--opb-soft);color:var(--opb);border:1px solid var(--opb)}
+.lane.p1{background:var(--za);color:#fff}
+.lane.p0,.lane.dim{background:transparent;color:var(--off);border:1px dashed var(--off)}
+.tag{font-family:var(--fs-mono);font-size:11px;color:var(--muted)}
+.facts{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.fact{font-family:var(--fs-mono);font-size:11px;background:var(--sunken);border:1px solid var(--line);
+  border-radius:5px;padding:4px 8px;color:var(--muted)}
+.fact b{color:var(--fg);font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted);margin-top:10px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+
+/* phase-1 transpose */
+.tp{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.tgrid{grid-template-columns:repeat(3,34px)}
+.tzgrid{grid-template-columns:repeat(4,34px)}
+.tpgrid{grid-template-columns:repeat(4,34px)}
+.tiny .cell{font-size:10px}
+.cell.hotZ{background:var(--za);color:#fff}
+.prow{display:flex;align-items:center;gap:8px}
+.prow .plbl{font-family:var(--fs-mono);font-size:10.5px;color:var(--muted);width:66px;text-align:right}
+.prow.lit .plbl{color:var(--opb)}
+
+/* interleave */
+.ilv{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:20px;align-items:start}
+@media(max-width:760px){.ilv{grid-template-columns:1fr}}
+.vecs{display:flex;flex-direction:column;gap:3px}
+.vec{display:flex;align-items:center;gap:8px;font-family:var(--fs-mono);font-size:11.5px;
+  border-radius:4px;padding:3px 7px;border:1px solid transparent;opacity:.36}
+.vec.lit{opacity:1}
+.vec .ix{color:var(--faint);width:46px;flex-shrink:0}
+.vec .bar2{height:13px;flex:1;border-radius:3px}
+.vec .who{width:78px;text-align:right;flex-shrink:0}
+.t0 .bar2{background:var(--za)} .t0 .who{color:var(--za)}
+.t1 .bar2{background:var(--opa)} .t1 .who{color:var(--opa)}
+.t2 .bar2{background:var(--opb)} .t2 .who{color:var(--opb)}
+.t3 .bar2{background:var(--t2)} .t3 .who{color:var(--t2)}
+.vec.lit{border-color:var(--line);background:var(--sunken)}
+footer{color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:14px}
+footer p{margin:0 0 9px} footer b{color:var(--fg)}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">fp32 sgemm &middot; one FMOPA tile</p>
+  <h1>Watching an SME kernel fill a matrix</h1>
+  <p class="sub">Every step of <b>C = A·B</b> with M=10, N=9, K=3. Drawn at <b>SVL = 128</b>, so a vector holds 4 floats and a tile is 4&times;4; at SVL = 512 each of those is 16 instead and nothing else changes.</p>
+</header>
+
+<div class="bar">
+  <div class="btns">
+    <button id="play" class="primary">▶ Play</button>
+    <button id="prev">◀ Step</button>
+    <button id="next">Step ▶</button>
+    <button id="patch">Skip patch ▶▶</button>
+    <button id="reset">⟲ Reset</button>
+    <span class="count" id="count"></span>
+  </div>
+  <input type="range" id="scrub" min="0" value="0" step="1" aria-label="Scrub through the trace">
+  <div class="stages" id="stages"></div>
+  <p class="note" id="note"></p>
+</div>
+
+<section class="panel">
+  <p class="ptitle">Operands · the shaded cells are what this step loads</p>
+  <div class="ops">
+    <div class="opblk">
+      <span class="oplbl"><b>A</b> — 10 × 3 (M × K)</span>
+      <div class="grid agrid" id="ag"></div>
+      <span class="oplbl" id="a-lbl"></span>
+    </div>
+    <span class="arrow">→</span>
+    <div class="opblk">
+      <span class="oplbl">loaded into registers</span>
+      <div class="reg"><span class="reg-name">Z0 · col A</span><div class="lanes" id="za0"></div></div>
+      <div class="reg"><span class="reg-name">Z1 · row B</span><div class="lanes" id="zb0"></div></div>
+      <div class="reg"><span class="reg-name">prow</span><div class="lanes" id="prow"></div><span class="tag" id="prow-t"></span></div>
+      <div class="reg"><span class="reg-name">pcol</span><div class="lanes" id="pcol"></div><span class="tag" id="pcol-t"></span></div>
+      <span class="oplbl">A&#8217;s column is contiguous only because <b>preprocess_l</b> packed it &mdash; a column of row-major A is a gather, and gathers are illegal in streaming mode. <b>Phase 1 below shows that pack happening.</b></span>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <span class="oplbl"><b>B</b> — 3 × 9 (K × N)</span>
+    <div class="scroll" style="margin-top:7px"><div class="grid bgrid" id="bg"></div></div>
+    <span class="oplbl" id="b-lbl"></span>
+  </div>
+</section>
+
+<div class="cols">
+  <section class="panel">
+    <p class="ptitle">Source · highlighted line is executing</p>
+    <pre id="code"></pre>
+    <div class="facts">
+      <span class="fact">tile side <b>4</b></span>
+      <span class="fact">patch <b id="f-patch"></b></span>
+      <span class="fact">ZA tiles used <b>1 of 4</b></span>
+      <span class="fact">Z regs live <b>2 of 32</b></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p class="ptitle">ZA array · 4 KiB at SVL 512, here 4 tiles of 4&times;4</p>
+    <div class="za-wrap" id="za"></div>
+  </section>
+</div>
+
+<section class="panel">
+  <p class="ptitle">C &middot; 10 rows &times; 9 columns, written one patch at a time</p>
+  <div class="scroll"><div class="grid cgrid" id="cg"></div></div>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--za)"></span>just written</span>
+    <span><span class="sw" style="background:var(--surface);border:1px solid var(--line)"></span>committed</span>
+    <span><span class="sw" style="background:var(--sunken)"></span>not computed yet</span>
+    <span><span class="sw" style="border:1px dashed var(--off)"></span>masked off this patch</span>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Phase 1 &mdash; how A got packed</h2>
+  <p class="sub" style="margin-bottom:14px">The trace above begins with <code>ap</code> already packed. This is the pass that produced it: a <b>blocked transpose done inside ZA</b>, before the multiply starts. Shown for the first block, rows 0&ndash;3 of A, with K = 3.</p>
+  <div class="tp">
+    <div class="opblk tiny">
+      <span class="oplbl"><b>A</b> &mdash; rows are contiguous, so loading one is legal</span>
+      <div class="grid tgrid" id="tp-a"></div>
+    </div>
+    <span class="arrow">&rarr;</span>
+    <div class="opblk tiny">
+      <span class="oplbl">ZA0 &mdash; written by <b style="color:var(--opa)">row</b>, read by <b style="color:var(--opb)">column</b></span>
+      <div class="grid tzgrid" id="tp-z"></div>
+    </div>
+    <span class="arrow">&rarr;</span>
+    <div class="opblk tiny">
+      <span class="oplbl"><b>ap</b> &mdash; packed; each k&rsquo;s column now contiguous</span>
+      <div id="tp-p" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+  </div>
+  <div class="btns" style="margin-top:14px">
+    <button id="tp-play" class="primary">&#9654; Play</button>
+    <button id="tp-prev">&#9664; Step</button>
+    <button id="tp-next">Step &#9654;</button>
+    <button id="tp-reset">&#10227; Reset</button>
+    <span class="count" id="tp-count"></span>
+  </div>
+  <p class="note" id="tp-note"></p>
+</section>
+
+<section class="panel">
+  <h2>Why the four tiles are interleaved</h2>
+  <p class="sub" style="margin-bottom:14px">ZA is one flat array of vectors. The four fp32 tiles are not stacked in it — they are woven together, one vector each in rotation. At SVL = 128 that is 16 vectors of 16 bytes, four per tile.</p>
+  <div class="ilv">
+    <div class="vecs" id="vecs"></div>
+    <div>
+      <div class="btns" style="margin-bottom:12px">
+        <button id="v-tile" class="sel">A tile&#8217;s slices</button>
+        <button id="v-mova">One mova group</button>
+      </div>
+      <p class="note" id="v-note"></p>
+      <p class="sub" style="margin-top:12px">Addressing the same storage along two axes is also what makes <b>transpose free</b> &mdash; written by row, read back by column, with no permute and no element moves. Phase 1 above walks that through element by element.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p><b>Only ZA0.S ever fills.</b> This kernel uses one of the four fp32 tiles, which is why a tuned kernel accumulates a 2&times;2 block of tiles instead — that doubles arithmetic intensity from 8 to 16 MACs per element loaded.</p>
+  <p><b>Only two vector registers are live</b> in the k-loop, because C is accumulating in ZA rather than occupying 24 accumulator registers the way a NEON 8&times;12 kernel must.</p>
+  <p><b>The edge patches run the same instruction as the full ones</b>, with shorter predicates. Skip to patch (8, 8) to see both masks go short at once. There is no tail loop anywhere in the kernel.</p>
+</footer>
+</div>
+
+<script>
+const M=10,N=9,K=3,SV=4;
+const A=[],B=[];
+for(let i=0;i<M;i++){A[i]=[];for(let k=0;k<K;k++)A[i][k]=((i*3+k*7)%9)+1;}
+for(let k=0;k<K;k++){B[k]=[];for(let j=0;j<N;j++)B[k][j]=((k*5+j*3)%9)+1;}
+
+const patches=[];
+for(let i=0;i<M;i+=SV)for(let j=0;j<N;j+=SV)patches.push({i0:i,j0:j,
+  pr:Array.from({length:SV},(_,r)=>i+r<M), pc:Array.from({length:SV},(_,c)=>j+c<N)});
+
+const steps=[];
+patches.forEach((p,pi)=>{
+  const rows=p.pr.filter(Boolean).length;
+  steps.push({pi,ph:'enter'}); steps.push({pi,ph:'zero'});
+  for(let k=0;k<K;k++)steps.push({pi,ph:'k',k});
+  for(let r=0;r<rows;r++)steps.push({pi,ph:'store',r});
+});
+
+const SRC=[
+ ['static void tile(const float *ap, const float *b, float *c,'],
+ ['                 uint64_t M, uint64_t N, uint64_t K,'],
+ ['                 uint64_t i0, uint64_t j0)'],
+ ['    __arm_streaming __arm_inout("za")'],['{'],
+ ['    svls = svcntsw();'],
+ ['    prow = svwhilelt_b32_u64(i0, M);'],
+ ['    pcol = svwhilelt_b32_u64(j0, N);'],[''],
+ ['    svzero_za();'],
+ ['    for (k = 0; k < K; ++k)'],
+ ['        svmopa_za32_f32_m(0, prow, pcol,'],
+ ['            svld1_f32(prow, ap + k*svls),'],
+ ['            svld1_f32(pcol, b + k*N + j0));'],[''],
+ ['    rows = svcntp_b32(prow, prow);'],
+ ['    for (r = 0; r < rows; ++r)'],
+ ['        svst1_hor_za32(0, r, pcol, c + (i0+r)*N + j0);'],
+ ['}'],[''],
+ ['__arm_new("za") __arm_locally_streaming'],
+ ['void sgemm_sme(...)   // smstart here, once'],['{'],
+ ['    for (i = 0; i < M; i += svls)'],
+ ['        for (j = 0; j < N; j += svls)'],
+ ['            tile(ap + i*K, b, c, M, N, K, i, j);'],
+ ['}   // smstop here']
+];
+const HL={enter:[5,6,7,23,24,25],zero:[9],k:[10,11,12,13],store:[15,16,17]};
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function paint(t){return esc(t)
+  .replace(/(\/\/.*)$/,'<span class="cm">$1</span>')
+  .replace(/\b(static|void|for|uint64_t|const|float)\b/g,'<span class="kw">$1</span>')
+  .replace(/\b(svcntsw|svwhilelt_b32_u64|svzero_za|svmopa_za32_f32_m|svld1_f32|svcntp_b32|svst1_hor_za32|tile|sgemm_sme)\b/g,'<span class="fn">$1</span>');}
+
+function sim(n){
+  const C=Array.from({length:M},()=>Array(N).fill(null));
+  let za=null,ZA=null,ZB=null,cur=null,just=[];
+  for(let s=0;s<=n;s++){
+    const st=steps[s],p=patches[st.pi];cur=st;just=[];
+    if(st.ph==='enter'){za=null;ZA=null;ZB=null;}
+    if(st.ph==='zero')za=Array.from({length:SV},()=>Array(SV).fill(0));
+    if(st.ph==='k'){
+      ZA=p.pr.map((on,r)=>on?A[p.i0+r][st.k]:null);
+      ZB=p.pc.map((on,c)=>on?B[st.k][p.j0+c]:null);
+      for(let r=0;r<SV;r++)for(let c=0;c<SV;c++)if(p.pr[r]&&p.pc[c])za[r][c]+=ZA[r]*ZB[c];
+    }
+    if(st.ph==='store')for(let c=0;c<SV;c++)if(p.pc[c]){
+      C[p.i0+st.r][p.j0+c]=za[st.r][c];just.push([p.i0+st.r,p.j0+c]);}
+  }
+  return {C,za,ZA,ZB,cur,p:patches[cur.pi],just};
+}
+
+const NOTES={
+  enter:s=>`<b>Patch (${s.p.i0}, ${s.p.j0}).</b> <code>whilelt</code> builds two masks: <b>${s.p.pr.filter(Boolean).length}</b> of ${SV} rows and <b>${s.p.pc.filter(Boolean).length}</b> of ${SV} columns exist here. Everything after this respects them.`,
+  zero:()=>`<b>svzero_za()</b> clears tile ZA0. Needed because ZA still holds the previous patch — it is not scratch that resets itself.`,
+  k:s=>`<b>k = ${s.cur.k}.</b> Load column ${s.cur.k} of A into Z0 and row ${s.cur.k} of B into Z1 — look at the shaded cells above. Then <b>one FMOPA</b> adds their whole outer product into ZA0: every Z0 lane against every Z1 lane.`,
+  store:s=>`<b>Storing slice ${s.cur.r}</b> — horizontal slice ${s.cur.r} of ZA0 is row ${s.p.i0+s.cur.r} of C. One slice per instruction; ZA is never stored whole.`
+};
+
+let i=0,timer=null;
+const $=id=>document.getElementById(id);
+$('scrub').max=steps.length-1;
+
+function lanes(vals,cls,mask){
+  return vals.map((v,ix)=>{const on=!mask||mask[ix];
+    return `<div class="lane ${on?cls:'dim'}">${on&&v!=null?v:'·'}</div>`;}).join('');
+}
+
+function render(){
+  const s=sim(i),p=s.p,st=s.cur;
+  $('count').textContent=`step ${i+1} / ${steps.length}`;
+  $('scrub').value=i;
+  $('f-patch').textContent=`(${p.i0}, ${p.j0})`;
+  $('note').innerHTML=NOTES[st.ph](s);
+
+  const names=['zero','k=0','k=1','k=2','store'];
+  const act=st.ph==='zero'?0:st.ph==='k'?1+st.k:st.ph==='store'?4:-1;
+  $('stages').innerHTML=names.map((n,ix)=>`<span class="stage ${ix===act?'on':''}">${n}</span>`).join('');
+
+  const hl=HL[st.ph];
+  $('code').innerHTML=SRC.map((l,ix)=>`<span class="ln${hl.includes(ix)?' on':''}">${paint(l[0])||'&nbsp;'}</span>`).join('');
+
+  // operands
+  const kk=st.ph==='k'?st.k:null;
+  let ag='';
+  for(let r=0;r<M;r++)for(let c=0;c<K;c++){
+    const inblk=r>=p.i0&&r<p.i0+SV&&p.pr[r-p.i0];
+    const hot=kk!==null&&inblk&&c===kk;
+    ag+=`<div class="cell ${hot?'hotA':inblk?'blk':''}">${A[r][c]}</div>`;
+  }
+  $('ag').innerHTML=ag;
+  $('a-lbl').innerHTML=kk!==null?`column <b>k=${kk}</b>, rows ${p.i0}–${p.i0+p.pr.filter(Boolean).length-1} → Z0`:'rows of this patch shaded';
+
+  let bg='';
+  for(let r=0;r<K;r++)for(let c=0;c<N;c++){
+    const inblk=c>=p.j0&&c<p.j0+SV&&p.pc[c-p.j0];
+    const hot=kk!==null&&inblk&&r===kk;
+    bg+=`<div class="cell ${hot?'hotB':inblk?'blk':''}">${B[r][c]}</div>`;
+  }
+  $('bg').innerHTML=bg;
+  $('b-lbl').innerHTML=kk!==null?`row <b>k=${kk}</b>, cols ${p.j0}–${p.j0+p.pc.filter(Boolean).length-1} → Z1`:'columns of this patch shaded';
+
+  $('prow').innerHTML=p.pr.map(on=>`<div class="lane ${on?'p1':'p0'}">${on?1:0}</div>`).join('');
+  $('pcol').innerHTML=p.pc.map(on=>`<div class="lane ${on?'p1':'p0'}">${on?1:0}</div>`).join('');
+  $('prow-t').textContent=`rows ${p.i0}–${p.i0+p.pr.filter(Boolean).length-1}`;
+  $('pcol-t').textContent=`cols ${p.j0}–${p.j0+p.pc.filter(Boolean).length-1}`;
+  $('za0').innerHTML=lanes(s.ZA||Array(SV).fill(null),'a',s.ZA?p.pr:Array(SV).fill(false));
+  $('zb0').innerHTML=lanes(s.ZB||Array(SV).fill(null),'b',s.ZB?p.pc:Array(SV).fill(false));
+
+  let za='';
+  for(let t=0;t<4;t++){
+    let g='';
+    for(let r=0;r<SV;r++)for(let c=0;c<SV;c++){
+      const on=p.pr[r]&&p.pc[c];
+      const v=t===0&&s.za?(on?s.za[r][c]:'·'):'';
+      const hot=t===0&&st.ph==='store'&&r===st.r&&on;
+      g+=`<div class="cell ${on?'':'masked'} ${hot?'just':''}">${v}</div>`;
+    }
+    za+=`<div class="za-tile ${t===0?'active':'idle'}"><h4>ZA${t}.S</h4><div class="grid za-grid">${g}</div></div>`;
+  }
+  $('za').innerHTML=za;
+
+  let cg='';const js=new Set(s.just.map(([r,c])=>r+','+c));
+  for(let r=0;r<M;r++)for(let c=0;c<N;c++){
+    const inp=r>=p.i0&&r<p.i0+SV&&c>=p.j0&&c<p.j0+SV;
+    const v=s.C[r][c];
+    cg+=`<div class="cell ${v!=null?'done':''} ${inp?'inpatch':''} ${js.has(r+','+c)?'just':''}">${v!=null?v:''}</div>`;
+  }
+  $('cg').innerHTML=cg;
+
+  $('prev').disabled=i===0;$('next').disabled=i===steps.length-1;$('patch').disabled=i===steps.length-1;
+}
+
+// interleaving diagram — 16 array vectors, tile n at every 4th
+let vmode='tile';
+function renderVecs(){
+  let h='';
+  for(let v=0;v<16;v++){
+    const t=v%4,slice=Math.floor(v/4);
+    const lit=vmode==='tile'?t===0:v<4;
+    h+=`<div class="vec t${t} ${lit?'lit':''}"><span class="ix">vec ${v}</span>`
+      +`<span class="bar2"></span><span class="who">ZA${t}H.S[${slice}]</span></div>`;
+  }
+  $('vecs').innerHTML=h;
+  $('v-tile').classList.toggle('sel',vmode==='tile');
+  $('v-mova').classList.toggle('sel',vmode==='mova');
+  $('v-note').innerHTML=vmode==='tile'
+    ? `<b>One tile is every fourth vector.</b> <code>ZA0.S</code> lives in vectors 0, 4, 8 and 12 — its four horizontal slices. The vectors in between belong to the other three tiles. So a tile is a <em>stride-4 view</em> of the array, not a contiguous block of it.`
+    : `<b>Four consecutive vectors are one row from each tile.</b> Read vectors 0–3 as the 8-bit tile <code>ZA0.B</code> and you get slice 0 of ZA0.S, ZA1.S, ZA2.S and ZA3.S together — which is exactly the order memory wants them in. One 8-bit <code>mova</code> group drains all four accumulators at once, instead of four separate passes.`;
+}
+$('v-tile').onclick=()=>{vmode='tile';renderVecs()};
+$('v-mova').onclick=()=>{vmode='mova';renderVecs()};
+
+function go(n){i=Math.max(0,Math.min(steps.length-1,n));render();}
+function stop(){clearInterval(timer);timer=null;$('play').textContent='▶ Play';}
+$('next').onclick=()=>{stop();go(i+1)};
+$('prev').onclick=()=>{stop();go(i-1)};
+$('reset').onclick=()=>{stop();go(0)};
+$('scrub').oninput=e=>{stop();go(+e.target.value)};
+$('patch').onclick=()=>{stop();const pi=steps[i].pi;let n=i;while(n<steps.length-1&&steps[n].pi===pi)n++;go(n)};
+$('play').onclick=()=>{
+  if(timer){stop();return}
+  if(i===steps.length-1)i=0;
+  $('play').textContent='❚❚ Pause';
+  const slow=window.matchMedia('(prefers-reduced-motion: reduce)').matches?900:430;
+  timer=setInterval(()=>{if(i>=steps.length-1){stop();return}go(i+1)},slow);
+};
+render();renderVecs();
+
+// ---- Phase 1: blocked transpose through ZA ----
+// states: 0 idle | 1..4 write row r=st-1 | 5..7 read col k=st-5 | 8 done
+const TK=3, TR=4, tlab=(r,k)=>'a'+r+k;
+let ti=0, tTimer=null;
+const TNOTE=[
+ `Start with four rows of A. Each row is contiguous in memory, so loading one is an ordinary legal load — nothing clever yet.`,
+ `<b>Write row 0 into horizontal slice 0.</b> <code>ZA0H.S[0]</code> now holds a00 a01 a02.`,
+ `<b>Write row 1 into horizontal slice 1.</b> The tile is filling up one row at a time.`,
+ `<b>Write row 2 into horizontal slice 2.</b>`,
+ `<b>Write row 3 into horizontal slice 3.</b> All four rows are in. Nothing has been transposed — they went in exactly as they were.`,
+ `<b>Now read <em>vertically</em>.</b> <code>ZA0V.S[0]</code> is column 0: a00 a10 a20 a30 — one element from each row. That <em>is</em> column k=0 of A. Store it out as <code>ap + 0·4</code>.`,
+ `<b>Vertical slice 1</b> gives a01 a11 a21 a31 — column k=1. Store as <code>ap + 1·4</code>.`,
+ `<b>Vertical slice 2</b> gives a02 a12 a22 a32 — column k=2. Store as <code>ap + 2·4</code>.`,
+ `<b>Done, and nothing was permuted.</b> The data went in by row and came out by column; only the addressing axis changed. That is why the transpose is free — and why <code>ap + k*svls</code> in the kernel is a plain contiguous load.`
+];
+function trend(){
+  const wr = ti>=1&&ti<=4 ? ti-1 : -1;
+  const rd = ti>=5&&ti<=7 ? ti-5 : -1;
+  let a='';
+  for(let r=0;r<TR;r++)for(let k=0;k<TK;k++)
+    a+=`<div class="cell ${r===wr?'hotA':(ti>=1&&r<=Math.min(ti-1,3)?'done':'')}">${tlab(r,k)}</div>`;
+  document.getElementById('tp-a').innerHTML=a;
+
+  let z='';
+  for(let r=0;r<TR;r++)for(let c=0;c<4;c++){
+    const filled = c<TK && (ti>=1 && r<=Math.min(ti-1,3));
+    const isW = r===wr && c<TK;
+    const isR = rd>=0 && c===rd && filled;
+    const cls = c>=TK ? 'masked' : isW ? 'hotA' : isR ? 'hotB' : filled ? 'done' : '';
+    z+=`<div class="cell ${cls}">${filled||isW?tlab(r,c):''}</div>`;
+  }
+  document.getElementById('tp-z').innerHTML=z;
+
+  let p='';
+  for(let k=0;k<TK;k++){
+    const got = ti>=5+k;
+    let cells='';
+    for(let r=0;r<TR;r++)
+      cells+=`<div class="cell ${k===rd?'hotB':got?'done':''}">${got||k===rd?tlab(r,k):''}</div>`;
+    p+=`<div class="prow ${k===rd?'lit':''}"><span class="plbl">ap + ${k}&middot;4</span><div class="grid tpgrid">${cells}</div></div>`;
+  }
+  document.getElementById('tp-p').innerHTML=p;
+
+  document.getElementById('tp-note').innerHTML=TNOTE[ti];
+  document.getElementById('tp-count').textContent=`step ${ti} / 8`;
+  document.getElementById('tp-prev').disabled=ti===0;
+  document.getElementById('tp-next').disabled=ti===8;
+}
+function tgo(n){ti=Math.max(0,Math.min(8,n));trend();}
+function tstop(){clearInterval(tTimer);tTimer=null;document.getElementById('tp-play').innerHTML='&#9654; Play';}
+document.getElementById('tp-next').onclick=()=>{tstop();tgo(ti+1)};
+document.getElementById('tp-prev').onclick=()=>{tstop();tgo(ti-1)};
+document.getElementById('tp-reset').onclick=()=>{tstop();tgo(0)};
+document.getElementById('tp-play').onclick=()=>{
+  if(tTimer){tstop();return}
+  if(ti===8)ti=0;
+  document.getElementById('tp-play').innerHTML='&#10074;&#10074; Pause';
+  const slow=window.matchMedia('(prefers-reduced-motion: reduce)').matches?1500:800;
+  tTimer=setInterval(()=>{if(ti>=8){tstop();return}tgo(ti+1)},slow);
+};
+trend();
+
+</script>
+
+</body></html>
