@@ -219,7 +219,7 @@ footer p{margin:0 0 9px} footer b{color:var(--fg)}
   </section>
 
   <section class="panel">
-    <p class="ptitle">ZA array · 4 KiB at SVL 512, here 4 tiles of 4&times;4</p>
+    <p class="ptitle">ZA array · 4 tiles of 4&times;4 here (SVL 128, so 16&times;16 bytes = 256 B) · at SVL 512 each tile is 16&times;16 and the array is 4 KiB</p>
     <div class="za-wrap" id="za"></div>
   </section>
 </div>
@@ -284,6 +284,7 @@ footer p{margin:0 0 9px} footer b{color:var(--fg)}
   <p><b>Only ZA0.S ever fills.</b> This kernel uses one of the four fp32 tiles, which is why a tuned kernel accumulates a 2&times;2 block of tiles instead — that doubles arithmetic intensity from 8 to 16 MACs per element loaded.</p>
   <p><b>Only two vector registers are live</b> in the k-loop, because C is accumulating in ZA rather than occupying 24 accumulator registers the way a NEON 8&times;12 kernel must.</p>
   <p><b>The edge patches run the same instruction as the full ones</b>, with shorter predicates. Skip to patch (8, 8) to see both masks go short at once. There is no tail loop anywhere in the kernel.</p>
+  <p><b>FMOPA runs on the matrix unit, which has its own pipes</b> — not the vector FMA pipes, so none of this throughput comes out of the NEON/SVE budget. NEON and SVE have no outer-product instruction at all: a rank-1 update there is a broadcast plus an FMLA on those vector pipes.</p>
 </footer>
 </div>
 
