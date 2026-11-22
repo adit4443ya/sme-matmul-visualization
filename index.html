@@ -156,6 +156,25 @@ pre{font-family:var(--fs-mono);font-size:12.5px;line-height:1.7;margin:0;overflo
 .t2 .bar2{background:var(--opb)} .t2 .who{color:var(--opb)}
 .t3 .bar2{background:var(--t2)} .t3 .who{color:var(--t2)}
 .vec.lit{border-color:var(--line);background:var(--sunken)}
+/* element-size carve */
+.carve{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.carve-stage{display:grid;gap:7px;padding:10px;border-radius:8px;background:var(--sunken);
+  border:1px solid var(--line);max-width:100%;overflow-x:auto}
+.ztile{display:flex;flex-direction:column;gap:4px;align-items:center}
+.ztile-g{display:grid;gap:1px}
+.ztile-c{background:var(--off);border-radius:2px;opacity:.45}
+.ztile.hot .ztile-c{background:var(--za);opacity:1}
+.ztile-l{font-family:var(--fs-mono);font-size:9.5px;color:var(--faint);line-height:1}
+.ztile.hot .ztile-l{color:var(--za);font-weight:600}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th{font-family:var(--fs-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);text-align:left;font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line);
+  white-space:nowrap}
+.tbl td{padding:6px 10px;border-bottom:1px solid var(--line);color:var(--fg);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl td.m{font-family:var(--fs-mono);font-size:12.5px}
+.tbl tr.on td{background:var(--za-soft);color:var(--za);font-weight:600}
+.tbl tbody tr:last-child td{border-bottom:none}
 footer{color:var(--muted);font-size:13.5px;border-top:1px solid var(--line);padding-top:14px}
 footer p{margin:0 0 9px} footer b{color:var(--fg)}
 </style>
@@ -278,6 +297,35 @@ footer p{margin:0 0 9px} footer b{color:var(--fg)}
       <p class="sub" style="margin-top:12px">Addressing the same storage along two axes is also what makes <b>transpose free</b> &mdash; written by row, read back by column, with no permute and no element moves. Phase 1 above walks that through element by element.</p>
     </div>
   </div>
+</section>
+
+<section class="panel">
+  <h2>How ZA is carved, per element size</h2>
+  <p class="sub" style="margin-bottom:13px">ZA is a fixed square of <b>SVLB &times; SVLB bytes</b>, where SVLB = SVL &divide; 8 &mdash; so 16 &times; 16 = <b>256 B</b> at the SVL 128 drawn on this page, and 64 &times; 64 = <b>4 KiB</b> at SVL 512. The element size decides only how that one square is cut up: <b>the number of tiles equals the element size in bytes</b>, and each tile is <b>SVLB &divide; that</b> on a side. Wider elements mean more tiles, each smaller. The storage never changes &mdash; every option below draws the same total area.</p>
+  <div class="btns" style="margin-bottom:14px">
+    <button data-e="1">8-bit .B</button>
+    <button data-e="2">16-bit .H</button>
+    <button data-e="4" class="sel">32-bit .S</button>
+    <button data-e="8">64-bit .D</button>
+    <button data-e="16">128-bit .Q</button>
+  </div>
+  <div class="carve">
+    <div class="carve-stage" id="carve"></div>
+    <p class="note" id="carve-note" style="flex:1;min-width:250px"></p>
+  </div>
+  <div class="scroll" style="margin-top:14px">
+  <table class="tbl" id="ztbl">
+    <thead><tr><th>Element</th><th>Tiles</th><th>Each tile &middot; SVL 128</th><th>Each tile &middot; SVL 512</th><th>Bytes / tile @ 512</th></tr></thead>
+    <tbody>
+      <tr data-e="1"><td class="m">8-bit &middot; .B</td><td>1</td><td class="m">16 &times; 16</td><td class="m">64 &times; 64</td><td class="m">4096</td></tr>
+      <tr data-e="2"><td class="m">16-bit &middot; .H</td><td>2</td><td class="m">8 &times; 8</td><td class="m">32 &times; 32</td><td class="m">2048</td></tr>
+      <tr data-e="4"><td class="m">32-bit &middot; .S</td><td>4</td><td class="m">4 &times; 4</td><td class="m">16 &times; 16</td><td class="m">1024</td></tr>
+      <tr data-e="8"><td class="m">64-bit &middot; .D</td><td>8</td><td class="m">2 &times; 2</td><td class="m">8 &times; 8</td><td class="m">512</td></tr>
+      <tr data-e="16"><td class="m">128-bit &middot; .Q</td><td>16</td><td class="m">1 &times; 1</td><td class="m">4 &times; 4</td><td class="m">256</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="sub" style="margin-top:12px">Same storage in every row: 256 B here, 4 KiB at SVL 512. This kernel uses <b>.S</b> &mdash; four 4&times;4 tiles as drawn, four 16&times;16 tiles on the hardware &mdash; and fills only ZA0 of the four, which is what the 2&times;2 tile blocking in a tuned kernel fixes.</p>
 </section>
 
 <footer>
@@ -534,6 +582,41 @@ document.getElementById('tp-play').onclick=()=>{
   tTimer=setInterval(()=>{if(ti>=8){tstop();return}tgo(ti+1)},slow);
 };
 trend();
+
+/* ---- ZA carve by element size ---- */
+const EL=[{e:1,n:'.B',t:1,cols:1,w:'bytes'},{e:2,n:'.H',t:2,cols:2,w:'16-bit halves'},
+          {e:4,n:'.S',t:4,cols:2,w:'fp32 singles'},{e:8,n:'.D',t:8,cols:4,w:'fp64 doubles'},
+          {e:16,n:'.Q',t:16,cols:4,w:'128-bit quads'}];
+const SVLB=16, CBASE=10.5;
+let curE=4;
+function carve(){
+  const d=EL.find(x=>x.e===curE), D=SVLB/d.e, px=CBASE*Math.sqrt(d.e);
+  const st=document.getElementById('carve');
+  st.style.gridTemplateColumns='repeat('+d.cols+',auto)';
+  let h='';
+  for(let t=0;t<d.t;t++){
+    const hot=(d.e===4&&t===0);
+    h+='<div class="ztile'+(hot?' hot':'')+'"><div class="ztile-g" style="grid-template-columns:repeat('
+      +D+','+px.toFixed(1)+'px)">'
+      +('<div class="ztile-c" style="height:'+px.toFixed(1)+'px"></div>').repeat(D*D)
+      +'</div><div class="ztile-l">ZA'+t+d.n+'</div></div>';
+  }
+  st.innerHTML=h;
+  const per=D*D*d.e;
+  document.getElementById('carve-note').innerHTML=
+    '<b>'+d.t+(d.t===1?' tile':' tiles')+' of '+D+'&times;'+D+'</b> '+d.w+
+    ' at SVL 128. Check it: '+d.t+' &times; '+(D*D)+' elements &times; '+d.e+
+    ' B = <b>256 B</b>, the whole array. Each tile holds '+per+' B.'+
+    (d.e===4?' <b>ZA0.S</b> is highlighted &mdash; the one tile this kernel fills.':'')+
+    ' At SVL 512 every dimension quadruples to '+(D*4)+'&times;'+(D*4)+' and the array is 4 KiB.';
+  document.querySelectorAll('#ztbl tbody tr').forEach(r=>
+    r.classList.toggle('on',+r.dataset.e===curE));
+  document.querySelectorAll('.btns button[data-e]').forEach(b=>
+    b.classList.toggle('sel',+b.dataset.e===curE));
+}
+document.querySelectorAll('.btns button[data-e]').forEach(b=>
+  b.onclick=()=>{curE=+b.dataset.e;carve()});
+carve();
 
 </script>
 
